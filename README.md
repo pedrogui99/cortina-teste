@@ -1,1 +1,3 @@
-simulador de cortina
+simulador de cortina feito no GPT
+promt: 
+Escreva um código HTML/CSS/JS em um único arquivo que simule um pedaço de tecido pendurado ou uma cortina usando um sistema de massa-mola. O tecido deve reagir ao cursor do mouse e/ou do dedo/touch screen  (efeito de vento) e à gravidade. A malha deve ser visível e rasgável se o mouse for arrastado muito rapidamente.
