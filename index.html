@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Tecido Massa-Mola (Mouse + Touch)</title>
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #0e0e0e;
+    touch-action: none;
+}
+canvas {
+    display: block;
+    cursor: grab;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<script>
+/* =====================
+   CANVAS
+===================== */
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+/* =====================
+   PARÂMETROS
+===================== */
+const gravity = 0.7;
+const friction = 0.999;
+const spacing = 16;
+const clothW = 45;
+const clothH = 30;
+const tearDist = 65;
+const iterations = 5;
+
+/* =====================
+   INPUT (MOUSE + TOUCH)
+===================== */
+const pointer = {
+    x: 0, y: 0,
+    px: 0, py: 0,
+    down: false
+};
+
+function updatePointer(x, y) {
+    pointer.px = pointer.x;
+    pointer.py = pointer.y;
+    pointer.x = x;
+    pointer.y = y;
+}
+
+canvas.addEventListener("mousedown", e => {
+    pointer.down = true;
+    updatePointer(e.clientX, e.clientY);
+});
+canvas.addEventListener("mousemove", e => {
+    updatePointer(e.clientX, e.clientY);
+});
+window.addEventListener("mouseup", () => pointer.down = false);
+
+canvas.addEventListener("touchstart", e => {
+    pointer.down = true;
+    const t = e.touches[0];
+    updatePointer(t.clientX, t.clientY);
+});
+canvas.addEventListener("touchmove", e => {
+    const t = e.touches[0];
+    updatePointer(t.clientX, t.clientY);
+});
+canvas.addEventListener("touchend", () => pointer.down = false);
+
+/* =====================
+   PONTO (MASSA)
+===================== */
+class Point {
+    constructor(x, y, pinned=false) {
+        this.x = x;
+        this.y = y;
+        this.oldx = x;
+        this.oldy = y;
+        this.pinned = pinned;
+        this.links = [];
+    }
+
+    update() {
+        if (this.pinned) return;
+
+        let vx = (this.x - this.oldx) * friction;
+        let vy = (this.y - this.oldy) * friction;
+
+        this.oldx = this.x;
+        this.oldy = this.y;
+
+        this.x += vx;
+        this.y += vy + gravity;
+
+        // vento / dedo / mouse
+        if (pointer.down) {
+            const dx = this.x - pointer.x;
+            const dy = this.y - pointer.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+
+            if (dist < 90) {
+                this.x += (pointer.x - pointer.px) * 0.5;
+                this.y += (pointer.y - pointer.py) * 0.5;
+            }
+        }
+    }
+
+    draw() {
+        ctx.fillRect(this.x, this.y, 2, 2);
+    }
+}
+
+/* =====================
+   CONEXÃO (MOLA)
+===================== */
+class Link {
+    constructor(p1, p2) {
+        this.p1 = p1;
+        this.p2 = p2;
+        this.len = spacing;
+    }
+
+    solve() {
+        const dx = this.p1.x - this.p2.x;
+        const dy = this.p1.y - this.p2.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+
+        if (dist > tearDist) {
+            this.p1.links.splice(this.p1.links.indexOf(this), 1);
+            return;
+        }
+
+        const diff = (this.len - dist) / dist;
+        const ox = dx * diff * 0.5;
+        const oy = dy * diff * 0.5;
+
+        if (!this.p1.pinned) {
+            this.p1.x += ox;
+            this.p1.y += oy;
+        }
+        if (!this.p2.pinned) {
+            this.p2.x -= ox;
+            this.p2.y -= oy;
+        }
+    }
+
+    draw() {
+        ctx.beginPath();
+        ctx.moveTo(this.p1.x, this.p1.y);
+        ctx.lineTo(this.p2.x, this.p2.y);
+        ctx.stroke();
+    }
+}
+
+/* =====================
+   CONSTRUÇÃO DO TECIDO
+===================== */
+const points = [];
+
+for (let y = 0; y <= clothH; y++) {
+    for (let x = 0; x <= clothW; x++) {
+        const p = new Point(
+            canvas.width/2 + x*spacing - clothW*spacing/2,
+            60 + y*spacing,
+            y === 0
+        );
+
+        if (x > 0)
+            p.links.push(new Link(p, points[points.length - 1]));
+
+        if (y > 0)
+            p.links.push(new Link(
+                p,
+                points[x + (y - 1) * (clothW + 1)]
+            ));
+
+        points.push(p);
+    }
+}
+
+/* =====================
+   LOOP PRINCIPAL
+===================== */
+function animate() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    ctx.strokeStyle = "#4cc9f0";
+    ctx.fillStyle = "#ffffff";
+
+    points.forEach(p => p.update());
+
+    for (let i = 0; i < iterations; i++) {
+        points.forEach(p => p.links.forEach(l => l.solve()));
+    }
+
+    points.forEach(p => {
+        p.links.forEach(l => l.draw());
+        p.draw();
+    });
+
+    requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>
