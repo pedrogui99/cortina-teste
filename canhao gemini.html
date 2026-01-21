@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Canhão de Newton - Simulador Orbital</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050510;
+            color: white;
+            font-family: sans-serif;
+            overflow: hidden; /* Evita scroll no mobile */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none; /* Desativa gestos padrão do navegador no canvas */
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            pointer-events: none;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            width: 90%;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+
+        button {
+            padding: 12px 20px;
+            background: #3498db;
+            border: none;
+            color: white;
+            border-radius: 8px;
+            font-size: 16px;
+            pointer-events: auto;
+            box-shadow: 0 4px #2980b9;
+        }
+
+        button:active {
+            box-shadow: 0 2px #2980b9;
+            transform: translateY(2px);
+        }
+
+        #msg {
+            position: absolute;
+            top: 50%;
+            text-align: center;
+            width: 100%;
+            opacity: 0.7;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <b>Canhão de Newton</b><br>
+        Projéteis ativos: <span id="count">0</span>
+    </div>
+
+    <div id="msg">Arraste na tela para mirar e disparar</div>
+
+    <div class="controls">
+        <button onclick="clearProjectiles()">Limpar Tela</button>
+        <button onclick="resetView()">Resetar Zoom</button>
+    </div>
+
+    <canvas id="simCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const countDisplay = document.getElementById('count');
+
+        // Configurações de Física
+        const G = 1.2; // Constante gravitacional ajustada para a escala
+        const M = 10000; // Massa da Terra
+        const earthRadius = 60;
+        const mountainHeight = 15;
+        
+        let projectiles = [];
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let dragEnd = { x: 0, y: 0 };
+
+        // Ajustar tamanho do canvas
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Classe Projétil
+        class Projectile {
+            constructor(x, y, vx, vy) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.history = [];
+                this.active = true;
+                this.color = `hsl(${Math.random() * 360}, 70%, 70%)`;
+            }
+
+            update() {
+                if (!this.active) return;
+
+                // Vetor distância até o centro da Terra (0,0 no nosso sistema transladado)
+                let dx = -this.x;
+                let dy = -this.y;
+                let distSq = dx*dx + dy*dy;
+                let dist = Math.sqrt(distSq);
+
+                // Colisão com a Terra
+                if (dist < earthRadius) {
+                    this.active = false;
+                    return;
+                }
+
+                // Lei de Newton: a = G*M / r^2
+                let force = (G * M) / distSq;
+                let ax = force * (dx / dist);
+                let ay = force * (dy / dist);
+
+                this.vx += ax;
+                this.vy += ay;
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Rastro
+                this.history.push({x: this.x, y: this.y});
+                if (this.history.length > 200) this.history.shift();
+            }
+
+            draw() {
+                // Desenha rastro
+                ctx.beginPath();
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 1;
+                for(let i=0; i<this.history.length; i++) {
+                    ctx.lineTo(this.history[i].x, this.history[i].y);
+                }
+                ctx.stroke();
+
+                // Desenha projétil
+                if (this.active) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 2, 0, Math.PI*2);
+                    ctx.fillStyle = "white";
+                    ctx.fill();
+                }
+            }
+        }
+
+        // Inputs (Touch e Mouse)
+        canvas.addEventListener('mousedown', startInput);
+        canvas.addEventListener('mousemove', moveInput);
+        canvas.addEventListener('mouseup', endInput);
+
+        canvas.addEventListener('touchstart', (e) => startInput(e.touches[0]));
+        canvas.addEventListener('touchmove', (e) => moveInput(e.touches[0]));
+        canvas.addEventListener('touchend', endInput);
+
+        function startInput(e) {
+            isDragging = true;
+            dragStart = { x: e.clientX, y: e.clientY };
+            dragEnd = { x: e.clientX, y: e.clientY };
+            document.getElementById('msg').style.display = 'none';
+        }
+
+        function moveInput(e) {
+            if (!isDragging) return;
+            dragEnd = { x: e.clientX, y: e.clientY };
+        }
+
+        function endInput() {
+            if (!isDragging) return;
+            isDragging = false;
+
+            // Calcula velocidade inicial baseada no arraste
+            const dx = dragStart.x - dragEnd.x;
+            const dy = dragStart.y - dragEnd.y;
+            
+            // Origem do canhão (topo da montanha)
+            const startX = 0;
+            const startY = -(earthRadius + mountainHeight);
+            
+            projectiles.push(new Projectile(startX, startY, dx * 0.05, dy * 0.05));
+        }
+
+        function clearProjectiles() { projectiles = []; }
+        function resetView() { resize(); }
+
+        // Loop de Animação
+        function loop() {
+            // Limpa e centraliza
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+
+            // Desenha a Terra
+            ctx.beginPath();
+            ctx.arc(0, 0, earthRadius, 0, Math.PI * 2);
+            ctx.fillStyle = "#2c3e50";
+            ctx.fill();
+            ctx.strokeStyle = "#3498db";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Desenha Montanha/Canhão
+            ctx.fillStyle = "#7f8c8d";
+            ctx.fillRect(-5, -(earthRadius + mountainHeight), 10, mountainHeight);
+
+            // Atualiza e desenha projéteis
+            projectiles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Desenha linha de mira
+            if (isDragging) {
+                ctx.setTransform(1, 0, 0, 1, 0, 0); // Reseta translação para desenhar UI de mira
+                ctx.beginPath();
+                ctx.moveTo(dragStart.x, dragStart.y);
+                ctx.lineTo(dragEnd.x, dragEnd.y);
+                ctx.strokeStyle = "rgba(255,255,255,0.5)";
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            countDisplay.innerText = projectiles.filter(p => p.active).length;
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>
